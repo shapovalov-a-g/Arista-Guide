@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARISTA Knowledge Base</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      html { scroll-behavior: smooth; }
+      body { background: #f8fafc; }
+      .prose img { border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(15,23,42,.08); }
+      .nav-link.active { background: #e2e8f0; color: #0f172a; }
+      .toc-link.active { color: #0f172a; background: #e2e8f0; }
+      .step-text p + p, .step-text ul + p, .step-text p + ul, .step-text h4 + p, .step-text h4 + ul { margin-top: .9rem; }
+      .step-text ul { margin-top: .75rem; padding-left: 1.1rem; list-style: disc; }
+      .step-text li + li { margin-top: .35rem; }
+      .step-text h4 { margin-top: .25rem; }
+      .floating-toc { position: fixed; right: 20px; top: 90px; width: 280px; max-height: calc(100vh - 120px); overflow: auto; z-index: 30; }
+      .section-flash {
+        animation: sectionFlash 1.6s ease;
+      }
+      @keyframes sectionFlash {
+        0% { box-shadow: 0 0 0 0 rgba(59,130,246,0.0); background-color: rgba(219,234,254,0.15); }
+        20% { box-shadow: 0 0 0 4px rgba(59,130,246,0.25); background-color: rgba(219,234,254,0.55); }
+        100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.0); background-color: rgba(248,250,252,0.8); }
+      }
+      @media (max-width: 1279px) { .floating-toc { display: none; } }
+    </style>
+  </head>
+  <body class="text-slate-800">
+    <div class="min-h-screen lg:flex">
+      <aside class="lg:sticky lg:top-0 lg:h-screen w-full lg:w-80 border-r border-slate-200 bg-white/90 backdrop-blur">
+        <div class="p-5 border-b border-slate-200">
+          <div class="text-xs uppercase tracking-[0.24em] text-slate-400">Knowledge Base</div>
+          <h1 class="mt-2 text-2xl font-semibold tracking-tight">ARISTA Guide</h1>
+          <p class="mt-2 text-sm text-slate-500">Инструкция с быстрым поиском, навигацией и скриншотами.</p>
+          <div class="mt-4">
+            <input id="searchInput" type="search" placeholder="Поиск по темам и шагам..." class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none ring-0 placeholder:text-slate-400 focus:border-slate-300 focus:bg-white" />
+          </div>
+        </div>
+        <nav id="sidebarNav" class="max-h-[60vh] overflow-auto p-4 pb-24 lg:max-h-[calc(100vh-180px)]"></nav>
+      </aside>
+
+      <main class="min-w-0 flex-1 xl:pr-[320px]">
+        <div class="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+          <div id="hero" class="mb-8 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-700 p-6 text-white shadow-xl sm:p-8">
+            <div class="max-w-3xl">
+              <div class="text-xs uppercase tracking-[0.28em] text-slate-300">ARISTA</div>
+              <h2 class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">База знаний по работе с системой</h2>
+              <p class="mt-3 text-sm leading-6 text-slate-200 sm:text-base">Структурированная инструкция, собранная из исходного документа. Все разделы, шаги и изображения доступны в одном месте и удобно открываются с телефона.</p>
+            </div>
+          </div>
+
+          <div class="mb-6 flex flex-wrap gap-3">
+            <button id="expandAllBtn" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Раскрыть все</button>
+            <button id="collapseAllBtn" class="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50">Свернуть все</button>
+          </div>
+          <div id="content" class="space-y-8"></div>
+        </div>
+      </main>
+    </div>
+
+    <aside id="floatingToc" class="floating-toc hidden rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-xl backdrop-blur">
+      <div class="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Навигация по разделу</div>
+      <div id="floatingTocTitle" class="mb-3 text-sm font-semibold text-slate-900"></div>
+      <div id="floatingTocLinks" class="space-y-1"></div>
+    </aside>
+
+    <button id="backToTopBtn" class="fixed bottom-5 right-5 z-40 rounded-full border border-slate-200 bg-white/95 px-4 py-3 text-sm text-slate-700 shadow-lg backdrop-blur transition hover:bg-slate-50">Наверх ↑</button>
+
+    <div id="imageModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 p-4">
+      <button id="closeModal" class="absolute right-4 top-4 rounded-full bg-white/10 px-4 py-2 text-sm text-white backdrop-blur">Закрыть</button>
+      <img id="modalImage" src="" alt="preview" class="max-h-[92vh] max-w-[96vw] rounded-2xl shadow-2xl" />
+    </div>
+
+    <script>
+      const state = { data: [], filtered: [] };
+
+      function escapeHtml(text = '') {
+        return text
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
+      }
+
+      function formatRichText(text = '') {
+        const lines = text.split('\n').map(line => line.trimRight());
+        let html = '';
+        let listBuffer = [];
+
+        const flushList = () => {
+          if (!listBuffer.length) return;
+          html += `<ul>${listBuffer.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+          listBuffer = [];
+        };
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line) {
+            flushList();
+            continue;
+          }
+
+          if (/^\d+(?:\.\d+)*\./.test(line)) {
+            flushList();
+            html += `<h4 class="text-lg font-semibold tracking-tight text-slate-900">${escapeHtml(line)}</h4>`;
+            continue;
+          }
+
+          const listLike = line.match(/^(?:[-•●▪◦]|[A-Za-zА-Яа-яЁё].*?:|\d+[.)])\s*(.*)$/);
+          const shouldBeList = (
+            rawLine.startsWith(' ') ||
+            /^[A-ZА-ЯЁ][^.!?]{0,120}:\s+/.test(line) ||
+            /^(?:Название|Адрес|Телефоны|Телефон|Филиал|Дата|Email|EMAIL|Должность|Категория|Вместимость|Меню|Сотрудника|Склад|Роль|Разрешение|Отмена|Создать|Прикрепить|Поисковую форму|Кнопку|Таблицу|Имя|Сумма|Количество|Время|Комментарий|Описание|Статус|Способы оплаты|Итоговая сумма)/.test(line) ||
+            /^(?:Все|VIP комната|Стол|🟩|🟧|⬛)/.test(line)
+          );
+
+          if (listLike && shouldBeList) {
+            const value = listLike[1] ? line : line;
+            listBuffer.push(value);
+            continue;
+          }
+
+          flushList();
+          html += `<p>${escapeHtml(line)}</p>`;
+        }
+
+        flushList();
+        return html;
+      }
+
+      function stepHtml(step) {
+        const warning = step.warning ? `<div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Важно:</strong> ${escapeHtml(step.warning)}</div>` : '';
+        const images = (step.images || []).map(src => `
+          <button class="image-zoom group overflow-hidden rounded-2xl" data-src="${src}">
+            <img src="${src}" alt="Скриншот" class="mt-4 w-full transition duration-300 group-hover:scale-[1.01]" />
+          </button>
+        `).join('');
+        return `
+          <li class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div class="step-text text-[15px] leading-7 text-slate-700">${formatRichText(step.text)}</div>
+            ${warning}
+            ${images}
+          </li>
+        `;
+      }
+
+      function sectionHtml(section, index) {
+        const toc = (section.steps || []).map((step, stepIndex) => {
+          const anchor = `${section.id}-step-${stepIndex + 1}`;
+          const label = (step.text || '').split('\n')[0] || `Шаг ${stepIndex + 1}`;
+          return `<a href="#${anchor}" class="toc-link block rounded-xl px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900">${escapeHtml(label)}</a>`;
+        }).join('');
+
+        return `
+          <section id="${section.id}" class="scroll-mt-6 rounded-[28px] border border-slate-200 bg-slate-50/80 shadow-sm overflow-hidden">
+            <button class="section-toggle flex w-full items-center justify-between gap-4 px-4 py-5 text-left sm:px-6" data-target="section-body-${index}">
+              <div>
+                <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Раздел</div>
+                <h3 class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">${escapeHtml(section.title)}</h3>
+              </div>
+              <div class="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-500">Свернуть</div>
+            </button>
+            <div id="section-body-${index}" class="border-t border-slate-200 px-4 pb-5 pt-2 sm:px-6 sm:pb-6">
+              <ol class="space-y-4">${section.steps.map((step, stepIndex) => `<div id="${section.id}-step-${stepIndex + 1}" class="scroll-mt-24">${stepHtml(step)}</div>`).join('')}</ol>
+            </div>
+          </section>
+        `;
+      }
+
+      function renderNav(items) {
+        const nav = document.getElementById('sidebarNav');
+        nav.innerHTML = items.map(item => `
+          <a href="#${item.id}" class="nav-link mb-1 block rounded-2xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">${escapeHtml(item.title)}</a>
+        `).join('');
+      }
+
+      function renderContent(items) {
+        document.getElementById('content').innerHTML = items.map((section, index) => sectionHtml(section, index)).join('');
+        bindImageZoom();
+        bindSpy();
+        bindSectionToggles();
+        bindLocalToc();
+      }
+
+      function applyFilter(query) {
+        const q = query.trim().toLowerCase();
+        if (!q) {
+          state.filtered = state.data;
+        } else {
+          state.filtered = state.data.filter(section => {
+            const hay = [section.title, section.description, ...(section.steps || []).map(s => `${s.text} ${s.warning || ''}`)]
+              .join(' ')
+              .toLowerCase();
+            return hay.includes(q);
+          });
+        }
+        renderNav(state.filtered);
+        renderContent(state.filtered);
+      }
+
+      function bindImageZoom() {
+        document.querySelectorAll('.image-zoom').forEach(btn => {
+          btn.addEventListener('click', () => {
+            document.getElementById('modalImage').src = btn.dataset.src;
+            document.getElementById('imageModal').classList.remove('hidden');
+            document.getElementById('imageModal').classList.add('flex');
+          });
+        });
+      }
+
+      function updateFloatingToc(sectionId) {
+        const toc = document.getElementById('floatingToc');
+        const title = document.getElementById('floatingTocTitle');
+        const linksWrap = document.getElementById('floatingTocLinks');
+        const body = document.getElementById(`section-body-${state.filtered.findIndex(item => item.id === sectionId)}`);
+        const section = state.filtered.find(item => item.id === sectionId);
+        if (!section || !section.steps || !section.steps.length || !body || body.classList.contains('hidden') || body.style.display === 'none') {
+          toc.classList.add('hidden');
+          title.textContent = '';
+          linksWrap.innerHTML = '';
+          return;
+        }
+        title.textContent = section.title;
+        linksWrap.innerHTML = section.steps.map((step, index) => {
+          const anchor = `${section.id}-step-${index + 1}`;
+          const label = (step.text || '').split('\n')[0] || `Шаг ${index + 1}`;
+          return `<a href="#${anchor}" class="toc-link block rounded-xl px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-900">${escapeHtml(label)}</a>`;
+        }).join('');
+        toc.classList.remove('hidden');
+        bindLocalToc();
+      }
+
+      function bindSpy() {
+        const links = [...document.querySelectorAll('.nav-link')];
+        const sections = [...document.querySelectorAll('section[id]')];
+        let lastActiveId = null;
+        let manualTargetId = null;
+        let manualScrollLock = false;
+        const setActive = (id) => {
+          if (!id || id === lastActiveId) return;
+          lastActiveId = id;
+          links.forEach(link => {
+            const active = link.getAttribute('href') === `#${id}`;
+            link.classList.toggle('active', active);
+          });
+          updateFloatingToc(id);
+        };
+        const flashSection = (section) => {
+          if (!section) return;
+          section.classList.remove('section-flash');
+          void section.offsetWidth;
+          section.classList.add('section-flash');
+        };
+
+        links.forEach(link => {
+          link.addEventListener('click', (event) => {
+            event.preventDefault();
+            const id = link.getAttribute('href').slice(1);
+            manualTargetId = id;
+            manualScrollLock = true;
+            setActive(id);
+            const section = document.getElementById(id);
+            if (section) {
+              const top = section.getBoundingClientRect().top + window.scrollY - 12;
+              window.scrollTo({ top, behavior: 'smooth' });
+              history.replaceState(null, '', `#${id}`);
+              setTimeout(() => {
+                flashSection(section);
+                manualScrollLock = false;
+                manualTargetId = null;
+              }, 650);
+            } else {
+              manualScrollLock = false;
+              manualTargetId = null;
+            }
+          });
+        });
+
+        const observer = new IntersectionObserver(entries => {
+          if (manualScrollLock) return;
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            setActive(entry.target.id);
+          });
+        }, { rootMargin: '-5% 0px -85% 0px', threshold: 0 });
+        sections.forEach(section => observer.observe(section));
+      }
+
+      function bindLocalToc() {
+        const links = [...document.querySelectorAll('.toc-link')];
+        const targets = links
+          .map(link => document.querySelector(link.getAttribute('href')))
+          .filter(Boolean);
+        const observer = new IntersectionObserver(entries => {
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const id = `#${entry.target.id}`;
+            links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === id));
+          });
+        }, { rootMargin: '-25% 0px -65% 0px', threshold: 0 });
+        targets.forEach(target => observer.observe(target));
+      }
+
+      function bindSectionToggles() {
+        document.querySelectorAll('.section-toggle').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const body = document.getElementById(btn.dataset.target);
+            const label = btn.querySelector('div:last-child');
+            const hidden = body.classList.toggle('hidden');
+            body.style.display = hidden ? 'none' : 'block';
+            label.textContent = hidden ? 'Раскрыть' : 'Свернуть';
+            const sectionId = btn.closest('section')?.id;
+            if (sectionId) updateFloatingToc(sectionId);
+          });
+        });
+      }
+
+      async function init() {
+        const response = await fetch('./data/kb.json');
+        const data = await response.json();
+        state.data = data.sections;
+        state.filtered = state.data;
+        renderNav(state.filtered);
+        renderContent(state.filtered);
+        document.getElementById('searchInput').addEventListener('input', e => applyFilter(e.target.value));
+        document.getElementById('expandAllBtn').addEventListener('click', () => {
+          document.querySelectorAll('[id^="section-body-"]').forEach(el => {
+            el.classList.remove('hidden');
+            el.style.display = 'block';
+          });
+          document.querySelectorAll('.section-toggle div:last-child').forEach(el => el.textContent = 'Свернуть');
+          const active = document.querySelector('.nav-link.active')?.getAttribute('href')?.slice(1);
+          if (active) updateFloatingToc(active);
+        });
+        document.getElementById('collapseAllBtn').addEventListener('click', () => {
+          document.querySelectorAll('[id^="section-body-"]').forEach(el => {
+            el.classList.add('hidden');
+            el.style.display = 'none';
+          });
+          document.querySelectorAll('.section-toggle div:last-child').forEach(el => el.textContent = 'Раскрыть');
+          updateFloatingToc(null);
+        });
+        document.getElementById('backToTopBtn').addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      }
+
+      document.getElementById('closeModal').addEventListener('click', () => {
+        document.getElementById('imageModal').classList.add('hidden');
+        document.getElementById('imageModal').classList.remove('flex');
+        document.getElementById('modalImage').src = '';
+      });
+
+      document.getElementById('imageModal').addEventListener('click', e => {
+        if (e.target.id === 'imageModal') {
+          document.getElementById('closeModal').click();
+        }
+      });
+
+      init();
+    </script>
+  </body>
+</html>
